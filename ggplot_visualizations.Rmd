@@ -19,7 +19,7 @@ library(RColorBrewer)
 
 
 ```{r, include=FALSE, echo=FALSE}
-d1 <- read_csv("ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
+d1 <- read_csv("../ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
 # Pre-add continent for problem set
 d1$continent <- countrycode(sourcevar = d1[, "country"] %>% pull(),
                             # pull out the country column from orig data as a vector
@@ -139,7 +139,7 @@ d1 %>%
 
 ```{r, include=FALSE, echo=FALSE}
 # Load data
-d2 <- read_csv("ppol563_psets/chicago_schools.csv")
+d2 <- read_csv("../ppol563_psets/chicago_schools.csv")
 # View snapshot of data
 head(d2)
 # Get dimensions of data
