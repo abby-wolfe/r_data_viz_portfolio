@@ -1,0 +1,197 @@
+---
+title: "Dygraphs tutorial"
+author: "Abby Wolfe"
+date: "11/11/2022"
+output: html_document
+---
+
+### What is dygraphs?
+
+Dygraphs is a JavaScript charting library designed specifically for visualizing time series data and creating interactive plots with features such as zoom pan, tooltips, highlighting, and optional second y-axes. It also has the capability to be embedded in RMarkdown and Shiny apps. This particular library in this tutorial was adapted from the JavaScript library specifically for R and you can find the documentation for it [here](https://rstudio.github.io/dygraphs/index.html).
+
+
+Let's begin with loading the necessary libraries for this tutorial. We will be using dygraphs for plotting, gapminder for our time series data, and dplyr for data manipulation.
+
+
+```{r setup}
+# Load necessary libraries
+library(dygraphs)
+library(gapminder)
+library(dplyr)
+```
+
+
+### Basic line plot
+
+
+Now that we've loaded our libraries, let's create a simple plot using dygraphs. The default plot for dygraphs is a line plot, although it also has the capability to produce candlestick charts.
+
+
+Let's filter our data to just contain observations from the United States for the life expectancy and year variables. After that, we can create our plot using the dygraph function. This function takes data, the main title, axes labels, peridocity, group name (if creating a facet plot), elementId widget, width, and height as its parameters. It's important to note that dygraph takes a dataset as a parameter as opposed to most visualization libraries which take specific x and y variables. This is because dygraphs expects either an xts data object or a dataframe that can be converted to an xts object; in other words, it expects at least 2 variables of which one must be a unit of time.
+
+
+For this plot specifically, we only fill out the data parameter in addition to the title and axes names. It shows that life expectancy in the US steadily increased from 68 in 1952 to 78 in 2007. If you drag your cursor anywhere on the axes, the plot will show a tooltip for each individual point displaying its year and life expectancy.
+
+
+```{r}
+# Create simple dygraph of life expectancy, filtered by country
+usle <- gapminder %>%
+  filter(country=="United States") %>%
+  mutate(US=lifeExp) %>%
+  select(year, US)
+
+life_exp_plot <- dygraph(usle, 
+        main="United States Life Expectancy, 1952-2007",
+        ylab="Age",
+        xlab="Year")
+
+life_exp_plot
+```
+
+
+### Line transformation (step plot)
+
+There are a number of ways in which we can modify the basic dygraph plot using the functions dyOptions and dySeries. We can accomplish this by piping the additional function onto dygraph rather than using a plus sign. In order to convert our standard line plot into a step plot, we should pipe dyOptions after dygraph and set the stepPlot parameter equal to **TRUE**. This will give us the plot below.
+
+
+
+```{r}
+# Change plot to be a step plot
+life_exp_plot %>% dyOptions(stepPlot = TRUE)
+```
+
+
+### Line transformation (area chart)
+
+Alternatively, we can convert our original plot into an area plot by piping dyOptions again onto dygraph and setting the fillGraph parameter to **TRUE** and assigning a value to the fillAlpha parameter. The fillAlpha parameter is on a 0-1 scale and the higher its values, the more opaque the fill is under the line plot. The plot below has fillAlpha set to 0.1 which is relatively transparent, but it would be more opaque if set to 0.5, for example.
+
+
+```{r}
+# Add fill to make area plot
+life_exp_plot %>%  dyOptions(fillGraph = TRUE, fillAlpha = 0.1)
+```
+
+
+### Line transformation (adding plotted points)
+
+In addition, you can use dyOptions to show the individual points on the line plot. As shown here, you can accomplish that by setting the drawPoints parameter equal to **TRUE**, and then setting the parameters for pointSize and pointShape. The pointSize parameter is on a continuous scale and the pointShape parameter is categorical and includes shapes such as circles, squares, and triangles, as well as other options like stars, diamonds, pentagons, hexagons, and plus signs. 
+
+
+```{r}
+# Add points to line plot
+life_exp_plot %>% dyOptions(drawPoints = TRUE, pointSize = 6, pointShape = "square")
+```
+
+
+### Line transformation (changing line color and pattern)
+
+Another option to modify the basic line plot is to change the pattern of the line itself. This can be accomplished by piping the dySeries function after dygraph and setting values for the strokeWidth, strokePattern, and color (optional) parameters. The strokeWidth parameter is on a continuous scale and strokePattern is categorical with options for dashed, dotted, or dotdashed lines.
+
+
+```{r}
+# Change the pattern, width and color of the line plot
+life_exp_plot %>% dySeries(strokeWidth = 2, strokePattern = "dashed", color="blue")
+```
+
+
+### Plotting multiple series
+
+Another thing you can accomplish with dygraphs is creating a plot with multiple lines. Below, you can use the following code to filter the gapminder data to only contain China life expectancies and column bind it to the US life expectancy data. Then, you can plot both lines using the merged data for the data parameter in the dygraph function. Notice how as you move your cursor on the graph, the tooltip displays the life expectancy for both the US and China for the given year which represents the x-coordinate where your cursor is.
+
+
+```{r}
+# Filter gapminder data to China and only select life expectancy data to create new series
+chinale <- gapminder %>%
+  filter(country=="China") %>%
+  mutate(China=lifeExp) %>%
+  select(China)
+
+# Merge the two series together
+life_exp <- cbind(usle, chinale)
+
+# Plot the two series on the same graph
+life_exp_plot2 <- dygraph(life_exp, 
+        main="U.S. and China Life Expectancies, 1952-2007",
+        ylab="Age",
+        xlab="Year")
+
+life_exp_plot2
+```
+
+
+### Highlighting a series (hiding other series)
+
+With multiple series on a line plot, dygraphs has a way of highlighting a particular series. As shown below, you can pipe the dyHighlight function after the plot and set values for the highlightCircleSize, highlightSeriesBackgroundAlpha,and hideOnMouseOut parameters. The highlightCircleSize parameter is continuous while the highlightSeriesBackgroundAlpha parameter is continuous on a 0-1 scale (with lower values indicating greater transparency for the line that is **not** being highlighted) and the hideOnMouseOut parameter can be set to either **TRUE** or **FALSE**. The hideOnMouseOut parameter, when set to **TRUE**, hides the highlighting effect when your cursor is not on the chart.
+
+
+```{r}
+# Highlighting series by hiding trend lines
+life_exp_plot2 %>% dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.1,
+              hideOnMouseOut = TRUE)
+```
+
+
+### Highlighting a series (bolding)
+
+Another option to highlight a particular series is to bold one line and leave the other line as it is normally. As shown below, you can accomplish this again by piping the dyHighlight function after dygraph and setting a value for the highlightSeriesOpts parameter. The highlightSeriesOpts parameter takes a list of any parameters that are compatible with the dySeries function, but to get the bolding effect, it's necessary to include a value for the strokeWidth parameter.
+
+
+```{r}
+# Highlighting series by bolding a trend line
+life_exp_plot2 %>% dyHighlight(highlightSeriesOpts = list(strokeWidth = 3))
+```
+
+
+### Adding an interactive range selector
+
+If you would prefer to highlight a specific section of the plot rather than one particular series, you can also pipe the dyRangeSelector function after the dygraph function. This function displays an interactive tool at the bottom of the plot that allows you to choose a modified range for the year variable. You can try it out on the plot below.
+
+
+```{r}
+# Add interactive tool to change the year range
+life_exp_plot2 %>% dyRangeSelector()
+```
+
+
+### Plotting series with different axes
+
+Another unique feature about the dygraphs module is that it allows for variables with different scales to exist on the same plot by including a second y-axis. Let's plot one line graph that measures both the life expectancy GDP per capita of the US from 1952 to 2007. As shown in the code below, after we call the dygraph function, we pipe the dyAxis function twice and dySeries function once. The dyAxis function sets a name and a label for the y-axis, so we use it twice here to differentiate the second y-axis (y2) which measures GDP per capita from the first y-axis (y) which measures life expectancy. The dySeries function is then used to specify which variable should be used for y2. We can then compare the increase in GDP per capita over the same time span as the increase in life expectancy.
+
+
+```{r}
+# Filtering gapminder data to U.S. observations for both life expectancy and GDP per capita
+usgdple <- gapminder %>%
+  filter(country=="United States") %>%
+  select(year, lifeExp, gdpPercap)
+
+# Plot life expectancy and gdp per capita on the same plot with different axes
+two_var_plot <- dygraph(usgdple,
+                      main="U.S. Life Expectancy and GDP per capita, 1952-2007",
+                      xlab="Year") %>% 
+  dyAxis("y", label = "Life Expectancy (Age)") %>%
+  dyAxis("y2", label = "GDP per Capita ($)", independentTicks = TRUE) %>%
+  dySeries("gdpPercap", axis = 'y2')
+
+two_var_plot
+```
+
+
+### Shading
+
+The last feature that we will cover in this tutorial is how you can integrate shading with dygraphs. Using the plot from the previous example as our basis, we can shade in periods when the US was in recession between 1952 and 2007 to indicate slow growth in the years immediately following the recessions. To execute this, after the initial plot, we have to pipe the dyShading function for each shaded region desired on the plot. The dyShading function takes the parameters "from" (start date/value for shaded region), "to" (end date/value for shaded region), and "color" (optional, defaults to light gray if not specified; this can take colors in the form "AABBCC" or "rgb(255,100,200)" or "yellow").
+
+
+```{r}
+# Include shading for all recessions that occurred between 1952 and 2007
+two_var_plot %>%
+  dyShading(from = "1953", to = "1954", color="#FFE6E6") %>%
+  dyShading(from = "1957", to = "1958", color="#FFE6E6") %>%
+  dyShading(from = "1960", to = "1961", color="#FFE6E6") %>%
+  dyShading(from = "1969", to = "1970", color="#FFE6E6") %>%
+  dyShading(from = "1957", to = "1958", color="#FFE6E6") %>%
+  dyShading(from = "1973", to = "1975", color="#FFE6E6") %>%
+  dyShading(from = "1990", to = "1991", color="#FFE6E6") %>%
+  dyShading(from = "2001", to = "2002", color="#FFE6E6") 
+```
+
