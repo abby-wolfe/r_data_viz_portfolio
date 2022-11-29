@@ -28,7 +28,7 @@ library(gganimate)
 ### Problem 1
 ```{r}
 # Read in data
-global_pps <- read.csv("ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
+global_pps <- read.csv("../ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
 
 # Filter data down to power plants in the US
 # Then, narrow data down using the maximum and minimum values for longitude and latitude for the DMV
@@ -257,7 +257,7 @@ animate(p1, nframes=300)
 ### Problem 5
 ```{r}
 # Save gun background check data
-guns <- read.csv("ppol563_psets/gun_background_checks.csv")
+guns <- read.csv("../ppol563_psets/gun_background_checks.csv")
 
 # Read in a US state map and get a list of states
 us_state_map <- map_data("state")
