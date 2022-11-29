@@ -1,0 +1,302 @@
+---
+title: "PPOL 563 Pset 2"
+author: "Abby Wolfe"
+date: "11/21/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(RColorBrewer)
+library(viridis)
+library(ggrepel)
+library(dplyr)
+library(maps)
+library(tidygeocoder)
+library(tidycensus)
+library(sf)
+library(tilegramsR)
+library(socviz)
+library(scales)
+library(tidyquant)
+library(gganimate)
+```
+
+
+
+### Problem 1
+```{r}
+# Read in data
+global_pps <- read.csv("ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
+
+# Filter data down to power plants in the US
+# Then, narrow data down using the maximum and minimum values for longitude and latitude for the DMV
+global_pps <- global_pps %>%
+  filter(country=='USA') %>%
+  mutate(long = longitude, lat=latitude) %>%
+  filter(long>-83.64611 & long<(-75.05746)) %>%
+  filter(lat>36.53752 & lat<40.64563) %>%
+  select(lat, long, capacity_mw)
+```
+```{r}
+# Use the maps package to do reverse geocoding and get the state and county names for the location of each power plant in the dataset
+startm <- Sys.time()
+
+state<-map.where(database="state", 
+                         global_pps$long, global_pps$lat)
+county<-map.where(database="county", 
+                        global_pps$long, global_pps$lat)
+endm <- Sys.time()
+```
+
+```{r}
+# Further subset and clean the data using the information from the reverse geocoding
+global_pps_subset <- cbind(global_pps, state)
+
+global_pps_subset$state[global_pps_subset$state=='virginia:main'] <- 'virginia'
+global_pps_subset$state[global_pps_subset$state=='virginia:chesapeake'] <- 'virginia'
+
+global_pps_subset <- global_pps_subset %>%
+  filter(state %in% c("maryland", "virginia", "west virginia", "district of columbia"))
+```
+
+```{r}
+# Get county map for DMV
+dmv_county_map <- map_data(map = "county", region = c("virginia", "maryland", "west virginia", "district of columbia"))
+
+dmv_state_map <- map_data(map = "state", region = c("virginia", "maryland", "west virginia", "district of columbia"))
+
+# Load data on US cities
+data("us.cities")
+```
+
+```{r}
+# Plot the data
+dmv_map <- ggplot() + 
+  geom_polygon(data=dmv_county_map, 
+               aes(long, lat, group = group), 
+               fill="white", 
+               color="lightgray") +
+  coord_map("polyconic") +
+  geom_path(data=dmv_state_map, aes(long, lat, group=group), colour ="black") +
+  geom_point(data=global_pps_subset, aes(x=long, y=lat, size=capacity_mw, color=state, alpha=0.5)) +
+  geom_text_repel(data=us.cities %>% filter(country.etc %in% c("DC","VA","MD","WV")), aes(x=long, y=lat, label=name), size=2, max.overlaps=15) +
+  labs(title="Power Plants in the Greater Washington Area by Capacity", subtitle="Average capacity of power plants highest in WV", x=NULL, y=NULL) +
+  theme_void()
+
+dmv_map
+```
+
+
+### Problem 2
+```{r}
+# Use census API key
+census_api_key("8d0cd9673a66af24790039fc11e19c97e9b85d99", install = TRUE, overwrite=TRUE)
+```
+
+```{r}
+# Load census data
+acs_2020 <- load_variables(year = 2020, "acs5",cache = TRUE)
+
+# Get the median income variable
+census_data_MI <- get_acs(geography="county",
+                       state="VA",
+                       year=2020,
+                       variables="B19013_001")
+
+# Select and clean data
+census_data_MI <- census_data_MI %>%
+  mutate(median_income=estimate) %>%
+  select(GEOID, NAME, median_income)
+
+# Get the population data
+census_data_pop <- get_acs(geography="county",
+                       state="VA",
+                       year=2020,
+                       variables="B01003_001")
+
+# Select and clean data
+census_data_pop <- census_data_pop %>%
+  mutate(population=estimate) %>%
+  select(GEOID, NAME, population)
+
+# Merge median income and population data
+census_data <- left_join(census_data_MI, census_data_pop)
+# Create "interaction" variable to calculate median income for nova area
+census_data$mi_pop <- census_data$median_income*census_data$population
+
+# Create list of nova counties and independent cities to aggregate
+nova_counties <- c("Arlington County, Virginia",
+                     "Fairfax County, Virginia",
+                     "Loudoun County, Virginia",
+                     "Prince William County, Virginia",
+                     "Stafford County, Virginia",
+                     "Alexandria city, Virginia",
+                     "Fairfax city, Virginia",
+                     "Falls Church city, Virginia",
+                     "Manassas city, Virginia",
+                     "Manassas Park city, Virginia",
+                     "Fredericksburg city, Virginia",
+                     "Clarke County, Virginia",
+                     "Culpeper County, Virginia",
+                     "Fauquier County, Virginia",
+                     "Madison County, Virginia",
+                     "Rappahannock County, Virginia",
+                     "Spotsylvania County, Virginia",
+                     "Stafford County, Virginia",
+                     "Warren County, Virginia",
+                     "Winchester city, Virginia")
+
+# Get the total nova population
+nova_pop <- census_data %>%
+  filter(NAME %in% nova_counties) %>%
+  select(population) %>%
+  sum()
+
+# Sum the median income of nova counties and then divide it by total nova population
+nova_mi <- census_data %>%
+  filter(NAME %in% nova_counties) %>%
+  select(mi_pop) %>%
+  sum()/nova_pop
+
+# Create nova dataframe and merge it with the existing census data
+GEOID <- ""
+NAME <- "NoVA"
+median_income <- nova_mi
+population <- nova_pop
+mi_pop <- nova_mi*nova_pop
+nova_df <- data.frame(GEOID, NAME, median_income, population, mi_pop)
+census_data <- rbind(census_data, nova_df)
+
+# Get rid of "county, virginia" from county names so cen 
+census_data$NAME=gsub(" County, Virginia","",census_data$NAME)
+census_data$NAME=tolower(census_data$NAME)
+colnames(census_data)[2] <- "subregion"
+```
+
+```{r}
+# Get virginia county data and label nova counties as nova
+va_map <- map_data(map="county", region="virginia")
+
+va_map["subregion"][va_map["subregion"]=="arlington"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="fairfax"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="loudoun"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="prince william"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="stafford"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="frederick"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="clarke"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="fauquier"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="madison"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="culpeper"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="rappahannock"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="spotsylvania"] <- "nova"
+va_map["subregion"][va_map["subregion"]=="warren"] <- "nova"
+```
+
+```{r}
+# Merge census data with virginia county geographic data
+va_map <- left_join(va_map, census_data)
+```
+```{r}
+# Plot data
+va_mi_plot <- ggplot(va_map, aes(x=long, y=lat, group=group)) +
+  geom_polygon(aes(fill=median_income)) +
+  coord_map("mercator") +
+  scale_fill_viridis(option = "B", labels=~paste("$", .x/1000, "K"), name="Median Income") +
+  geom_text(x=-77.8, y=38.75, label="NoVA")+
+  labs(title="Median Household Income in Virginia by County", subtitle="Median income is highest in the Northern Virginia suburbs of Washington", x=NULL, y=NULL) +
+  theme_void()
+
+va_mi_plot
+```
+
+### Problem 3
+```{r}
+# Create variable that measures margin of victory for the winner
+election$trump_margin <- ifelse(election$winner=="Clinton",-1*(election$pct_margin),election$pct_margin)
+
+# Change the variable name to prepare for merging
+election <- election %>%
+  mutate(state = st)
+
+# Join hexagon bin data with election data
+hexagon_bins <- left_join(sf_NPR1to1, election, by="state")
+
+# Plot data
+ggplot(hexagon_bins) +
+  geom_sf(aes(fill=trump_margin, color=factor(winner))) +
+  geom_sf_text(aes(label = state), color = "white") +
+  labs(x=NULL, y=NULL, title="Republican Margin Percentages in 2016 Presidential Election", subtitle="Coastal states went democrat while midwestern and plains states went republican") +
+  scale_fill_gradient2(low="darkblue", mid="gray", high="darkred", name="Trump Margin", labels=~paste(.x, "%")) +
+  scale_color_manual(values=c("Blue","Red"), name="Winner") +
+  theme_void()
+```
+
+### Problem 4
+```{r}
+# Get stock data from tidyquant
+stock_prices <- tq_get(c("META","AAPL","AMZN","NFLX","GOOG"), get="stock.prices")
+
+# Design plot
+p1 <- ggplot(stock_prices, aes(x=volume, y=adjusted)) +
+  geom_point(aes(color=symbol), size=12, alpha=0.7) +
+  scale_color_discrete(NULL, labels=c("Apple","Amazon","Google","Meta","Netflix")) +
+  scale_x_log10(labels=function(s) format(x=s/1000000, big.mark = ",")) +
+  scale_y_continuous(labels=~paste("$",.x)) +
+  labs(title="Adjusted Price and Volume for FAANG stocks: {frame_time}", x="Trading Volume (MM)", y="Adjusted Price") +
+  transition_time(date) +
+  ease_aes('linear') +
+  shadow_wake(0.2)
+
+# Animate plot frames
+animate(p1, nframes=300)
+```
+
+
+### Problem 5
+```{r}
+# Save gun background check data
+guns <- read.csv("ppol563_psets/gun_background_checks.csv")
+
+# Read in a US state map and get a list of states
+us_state_map <- map_data("state")
+us_states <- unique(us_state_map$region)
+
+# Get recheck data from July 2022
+p5_data <- guns %>%
+  mutate(region = tolower(state)) %>%
+  filter(region %in% us_states & month=="7/1/2022") %>%
+  mutate(private_sale_prop = (private_sale_handgun+private_sale_long_gun+private_sale_other)/totals,
+         recheck_prop = permit_recheck/totals)
+
+# Join state map with background check data
+us_state_map <- left_join(us_state_map, p5_data, by="region")
+
+# Plot data
+recheck_choropleth <- ggplot(us_state_map, aes(x=long, y=lat, group=group)) +
+  geom_polygon(aes(fill=recheck_prop), color="black") +
+  coord_map("albers", lat0=29.5, lat1=45.4) +
+  scale_fill_viridis(option="F", direction=-1, labels=~paste(.x*100, "%"), name="Proportion of rechecks") +
+  labs(title="Proportion of permit rechecks to checks requested by a\n Federal Firearm Licensee, July 2022", subtitle="Kentucky, Utah, Indiana, and Minnesota have a high proportion of rechecks\n while most states are close to 0") +
+  theme_void()
+
+recheck_choropleth
+```
+
+
+### Problem 6
+```{r}
+# Use stock price data from problem 4 to plot an animated line plot
+faang_line_plot <-ggplot(stock_prices, aes(x=date, y=adjusted, color=symbol)) +
+  geom_line() +
+  geom_point() +
+  scale_color_discrete(NULL, labels=c("Apple","Amazon","Google","Meta","Netflix")) +
+  scale_y_continuous(labels=~paste("$",.x)) +
+  labs(title="Adjusted prices of FAANG Stocks, 2012-2022", subtitle="Meta and Netflix prices diverge from other FAANG prices in 2016 and crash in 2022", x="Year", y="Adjusted Price") + 
+  transition_reveal(date) +
+  theme_minimal()
+
+animate(faang_line_plot, nframes=150, end_pause=15)
+```
+
