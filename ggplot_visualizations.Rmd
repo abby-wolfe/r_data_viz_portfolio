@@ -1,0 +1,239 @@
+---
+title: "ppol563_pset1_wolfe"
+author: "Abby Wolfe"
+date: "10/19/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(ggrepel)
+library(scales)
+library(countrycode)
+library(naniar)
+library(ggthemes)
+library(RColorBrewer)
+```
+
+
+```{r, include=FALSE, echo=FALSE}
+d1 <- read_csv("../ppol563_psets/global_power_plant_database_v_1_3/global_power_plant_database.csv")
+# Pre-add continent for problem set
+d1$continent <- countrycode(sourcevar = d1[, "country"] %>% pull(),
+                            # pull out the country column from orig data as a vector
+                            origin = 'iso3c', # naming convention of the orig data
+                            destination = "continent") # name of new var to create
+# Add continent for missing data
+# Add a renewable energy flag
+d1 <- d1 %>%
+  mutate(continent = case_when(country_long == "Antarctica" ~ "Antarctica",
+                               country_long == "Kosovo" ~ "Europe",
+                               TRUE ~ continent),
+         renewable = ifelse(primary_fuel %in% c("Solar", "Hydro", "Wind", "Biomass", "Geothermal", "Wave and Tidal"), 
+                            "Renewable Energy", "Non-Renewable Energy"))
+```
+
+#### 1) This database is not a complete representation of all power plants. In fact, it only covers about 30% of all Solar energy produced worldwide. Please write a brief paragraph you would include in an email to colleagues describing the scope and source of the limitations of this data.
+
+While this database is comprehensive for power plants that run on nuclear, geothermal, coal, hydro, biomass, and natural oil/gas energy sources, there are discrepancies in the availability of data on power plants that run primarily on solar and wind power. Most countries do not publicly report on their power sectors and those that do often under-report wind and solar plants because they tend to be newer and smaller than conventional power plants. This situation is a product of limitations regarding this dataset including data availability and reliability, reporting delays, and a lack of operational data reported. So, when looking at the following graphics, it is important to note that renewable energy plants tend to be underrepresented compared to their estimated counts and that there is less data available about how much electricity they generate compared to fossil fuel power plants.
+
+#### 2) Reproduce the histogram plot below, in which we are visualizing commissioning_year with a bin width of 10. Please insert a meaningful title and subtitle.
+
+```{r}
+ggplot(data = d1,
+       aes(x = commissioning_year)) +
+  geom_histogram(binwidth=10) +
+  labs(x="Commissioning Year", y="Count of Facilities", title="Histogram Plot of Commissioning Years for Global Power Plants", subtitle="A timeline showing years of operation for 72% of the world's electricity generating facilities")
+
+ggsave('plots/power_plant_histogram.png')
+```
+
+
+#### 3) Reproduce the boxplot below, in which we are visualizing capacity_mw, grouped by primary_fuel (which is sorted by the median of capacity_mw). Take note of the logged X axis, and please insert a meaningful title and subtitle.
+```{r}
+ggplot(data = d1,
+       aes(x=reorder(primary_fuel, capacity_mw, FUN=median), y=capacity_mw)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  coord_flip() +
+  labs(x="Fuel Type", y="Capacity (in MegaWatts)", title="Boxplot of Electrical Generating Capacity by Fuel Type", subtitle="Renewable energy sources have lower median capacities than coal and gas")
+
+ggsave('plots/power_plant_capacity_boxplot.png')
+```
+
+
+#### 4) Reproduce the barchart below, visualizing primary_fuel and colored by renewable. Please insert a meaningful title and subtitle.
+```{r}
+pp_barplot <- d1 %>%
+  group_by(primary_fuel) %>%
+  mutate(count = n()) %>%
+  ggplot(aes(x=reorder(primary_fuel, count), fill=renewable)) + 
+  geom_bar(stat='count') +
+  coord_flip() +
+  scale_fill_manual(values = c('black', 'darkgreen'), name=NULL) +
+  labs(x="Primary Fuel of Power Plant", y="Count of Facilities", title="Barplot of Global Power Plant Facilities by Primary Fuel Source", subtitle="There are more facilities globally for renewable energy than fossil fuels")
+
+pp_barplot
+
+ggsave(filename='plots/power_plant_barplot.png')
+```
+
+
+#### 5) Reproduce the grouped barchart below, visualizing counts of the number of facilities in each continent, colored by the renewable variable. Notice the location of the text labels on each bar - this is tricky to do, so you may have to do some googling. Inserting your own meaningful title and subtitle.
+```{r}
+ggplot(d1, aes(x=continent, fill=renewable)) +
+  geom_bar(position='dodge', stat='count') +
+  scale_fill_manual(values = c('black', 'darkgreen'), name=NULL) +
+  geom_text(aes(label = ..count..), stat = "count", position=position_dodge(width=0.9), vjust=-0.25, colour = "black") +
+  labs(x="Continent", y="Count of Facilities", title="Grouped Barplot of Global Power Plant Facilities by Continent", subtitle="The Americas and Europe lead in renewable energy power plants")
+
+ggsave('plots/grouped_power_plant_barplot.png')
+```
+
+
+#### 6) Reproduce the 100% stacked barchart below. This is a visualiation of a count of facilities by continent grouped by the renewable variable, and then computed as proportions. Take note of the text labels, which are:
+#### + rounded to a whole number
+#### + text is white
+#### + % suffix
+#### + in the middle of their respective colored bar
+```{r}
+pp_stacked_barplot <- d1 %>%
+  group_by(continent, renewable) %>%
+  tally() %>%
+  mutate(percent = n/sum(n)) %>%
+  ggplot(aes(x=continent, y=n, fill=renewable)) + 
+  geom_bar(position='fill', stat='identity') +
+  geom_text(aes(label=paste0(sprintf("%1.0f", percent*100),"%")),
+                     position=position_fill(vjust=0.5), colour="white") +
+  scale_fill_manual(values = c('black', 'darkgreen'), name=NULL) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x='Continent', y='Proportion of Facilities', title='100% Stacked Barplot of Global Power Plants by Continent', subtitle='Europe and Asia have the greatest proportion of renewable energy facilities globally')
+
+pp_stacked_barplot
+  
+ggsave('plots/power_plant_stacked_barplot.png')
+```
+
+
+#### 7)  Reproduce the scatterplot below, inserting your own meaningful title and subtitle. Key details to reproduce:
+#### + Antarctica is filtered out
+#### + We are only including primary_fuel == Solar, Hydro, Wind, Gas, Coal, Oil, Nuclear
+#### + The x axis is the number of facilities for each continent/renewable/primary_fuel combo
+#### + The y axis is a calculated variable of the mean of capacity_mw
+#### + The labels are repelled
+#### + The x and y axis numeric labels are formatted with commas
+#### + The y axis has a suffix of “mwh”
+#### + The legend is on the bottom of the axis
+```{r}
+pp_scatterplot <- d1 %>%
+  select(continent, capacity_mw, primary_fuel, renewable) %>%
+  group_by(continent, primary_fuel) %>%
+  filter(continent!='Antarctica', primary_fuel %in% c("Solar", "Hydro", "Wind", "Gas", "Coal", "Oil", "Nuclear")) %>%
+  mutate(count = n(), mean_capacity = mean(capacity_mw)) %>%
+  ggplot(aes(x=count, y=mean_capacity, color=renewable)) +
+  geom_point(size=2.5) +
+  facet_wrap(~continent, scales="free") +
+  scale_color_manual(values = c('black', 'darkgreen'), name="Primary Fuel") +
+  scale_x_continuous(label=comma) +
+  scale_y_continuous(labels=function(s) number(x=s, suffix = " mwh", big.mark = ",")) +
+  geom_text(aes(label=primary_fuel), hjust=0.5, vjust=-1, size=3) +
+  theme(legend.position="bottom") +
+  labs(x="Number of Power Plants", y="Average Capacity of Power Plants", title="Scatter Plot of Mean Capacity and Number of Power Plants by Fuel and Continent", subtitle="Non-renewable fuel plants have high average capacity and low counts across continents")
+  
+pp_scatterplot
+
+ggsave('plots/power_plant_continent_scatterplot.png')
+```
+
+
+#### 8) Create a bar chart of any element from your chosen dataset. The plot should either be colored, grouped or faceted to show how the key variable varies by some other categorical variable. It may be any orientation and it may be grouped, stacked, or 100% stacked.
+
+#### Your plot should have a legend (if necessary), descriptive title and subtitle, should not use default ggplot2 colors or the default ggplot2 theme, and all plot elements should be human readable (no overlapping text, no acronyms unless they are defined, no underscores). Axis scales should make sense and be rounded to 2 digits or less (if applicable).
+
+**BONUS: (not required)** - change the font of the title, subtitle, and caption without removing other features of the theme.
+
+```{r, include=FALSE, echo=FALSE}
+# Load data
+d2 <- read_csv("../ppol563_psets/chicago_schools.csv")
+# View snapshot of data
+head(d2)
+# Get dimensions of data
+dim(d2)
+# Clean d2 by replacing NDA (no data available), not applicable, etc. with NA
+na_strings <- c("NDA","Not Applicable", "Not Enough Data")
+d2 <- d2 %>%
+  replace_with_na_all(condition = ~.x %in% na_strings)
+```
+```{r}
+# Generate barplot
+cps_barplot <- d2 %>%
+  drop_na(cps_performance_policy_status) %>%
+  group_by(cps_performance_policy_status) %>%
+  mutate(count = n()) %>%
+  ggplot(aes(x=reorder(network_manager, count), fill=cps_performance_policy_status)) +
+  geom_bar(position="fill", stat="count") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('lightgrey', 'darkred'), name=NULL) +
+  labs(x="Name of School Network within CPS", y="Proportion of Schools", title="Proportion of Schools on Probation in Chicago Public Schools, by Network", subtitle="Schools on the South and West sides are more likely to be on probation than schools on the North side") +
+  ggthemes::theme_fivethirtyeight()
+
+cps_barplot
+
+ggsave('plots/cps_probation_stacked_barplot.png')
+```
+
+
+#### 9) Create a boxplot of any numeric variable from your selected data, segmented by some relevant categorical data point. Be sure the boxplots are meaningfully sorted by some key statistic of the selected numeric variable.
+
+#### Your plot should have a legend (if necessary), descriptive title and subtitle, should not use default ggplot2 colors or the default ggplot2 theme, and all plot elements should be human readable (no overlapping text, no acronyms unless they are defined, no underscores). Axis scales should make sense and be rounded to 2 digits or less (if applicable).
+
+**BONUS: (not required)** - color the boxplots by the grouped median of your numeric variable.
+
+```{r}
+cps_boxplot <- d2 %>%
+  group_by(network_manager) %>%
+  mutate(medAttendance = median(average_student_attendance)) %>%
+  ggplot(aes(x=reorder(network_manager, average_student_attendance, FUN=median), y=average_student_attendance/100)) +
+  geom_boxplot(aes(fill = medAttendance)) +
+  theme_classic() +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_gradient2(midpoint=90, low="red", mid="white", high="blue", space="Lab", name="Median Attendance (%)") +
+  labs(x="Network", y="Student Attendance", title="Distribution of Student Attendance by School Network", subtitle="Elementary schools have higher attendance rates than high schools")
+
+cps_boxplot
+
+ggsave('plots/cps_attendance_boxplot.png')
+```
+
+
+#### 10) Create a scatterplot using two numeric variables from the data. Use a categorical variable to highlight one category from the data. (For example, the safety_icon variable in the chicago_schools.csv data has six categories, but your visualization should only highlight one category with a color).
+
+#### Your plot should have a legend (if necessary), descriptive title and subtitle, should not use default ggplot2 colors or the default ggplot2 theme, and all plot elements should be human readable (no overlapping text, no acronyms unless they are defined, no underscores). Axis scales should make sense and be rounded to 2 digits or less (if applicable).
+
+**BONUS: (not required)** - add a faint dotted line that represents the average for X axis variable. Do the same for the Y axis variable.
+
+```{r}
+# Note: mean for safety score derived from summary(d2$safety_score) and manually added to include vertical line
+d2$vw_safety <- ifelse(d2$safety_icon == "Very Weak", 1, 0)
+cps_scatterplot <- d2 %>%
+  drop_na(safety_icon) %>%
+  ggplot(aes(x=safety_score,y=rate_of_misconducts_per_100_students, color=vw_safety)) + 
+  geom_point() +  
+  geom_hline(yintercept=mean(d2$rate_of_misconducts_per_100_students), linetype="dotted", color="red") +
+  annotate("text", x = 15, y = mean(d2$rate_of_misconducts_per_100_students), label = "Overall Avg Misconduct Rate", vjust = 1.5, size=2.5) +
+  geom_vline(xintercept=49.5, linetype="dotted", color="blue") +
+  annotate("text", x = 49.5, y = 200, label = "Overall Avg Safety Score", vjust = -1.5, size=2.5, angle='270') +
+  theme_classic() +
+  scale_color_gradient(low="grey", high="darkred", name="Lowest Safety Rating") +
+  labs(x="Safety Score (1-100)", y="Misconduct Rate per 100 Students", title="Distribution of Safety Scores and Misconduct Rates at the School Level", subtitle="There is a general inverse trend between safety scores and misconduct rates with many outliers")
+  
+cps_scatterplot
+
+ggsave('plots/cps_misconduct_safety_scatterplot.png')
+```
+
