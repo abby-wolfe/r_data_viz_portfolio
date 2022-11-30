@@ -86,6 +86,8 @@ dmv_map <- ggplot() +
   theme_void()
 
 dmv_map
+
+ggsave('plots/power_plant_dmv_bubble_map.png')
 ```
 
 
@@ -209,6 +211,8 @@ va_mi_plot <- ggplot(va_map, aes(x=long, y=lat, group=group)) +
   theme_void()
 
 va_mi_plot
+
+ggsave('plots/va_median_income_choropleth.png')
 ```
 
 ### Problem 3
@@ -231,6 +235,8 @@ ggplot(hexagon_bins) +
   scale_fill_gradient2(low="darkblue", mid="gray", high="darkred", name="Trump Margin", labels=~paste(.x, "%")) +
   scale_color_manual(values=c("Blue","Red"), name="Winner") +
   theme_void()
+
+ggsave('plots/2016_election_margin_hexbin.png')
 ```
 
 ### Problem 4
@@ -251,6 +257,8 @@ p1 <- ggplot(stock_prices, aes(x=volume, y=adjusted)) +
 
 # Animate plot frames
 animate(p1, nframes=300)
+
+anim_save('plots/faang_bubble_plot.gif', animation=last_animation())
 ```
 
 
@@ -282,6 +290,8 @@ recheck_choropleth <- ggplot(us_state_map, aes(x=long, y=lat, group=group)) +
   theme_void()
 
 recheck_choropleth
+
+ggsave('plots/permit_recheck_choropleth.png')
 ```
 
 
@@ -298,5 +308,7 @@ faang_line_plot <-ggplot(stock_prices, aes(x=date, y=adjusted, color=symbol)) +
   theme_minimal()
 
 animate(faang_line_plot, nframes=150, end_pause=15)
+
+anim_save('plots/faang_line_plot.gif', animation=last_animation())
 ```
 
